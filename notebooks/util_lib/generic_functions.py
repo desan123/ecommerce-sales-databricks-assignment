@@ -26,7 +26,7 @@ def upsert_logic_bronze(
 ):
     """
     Writes source_df to a Delta table at table_name using MERGE on merge_keys.
-    Creates the table on first run; upserts on subsequent runs.
+    Creates the table on first run with column mapping enabled for spaces in column names.
 
     Args:
         source_df: Source DataFrame to upsert
@@ -43,11 +43,19 @@ def upsert_logic_bronze(
     source_df = source_df.select([f.name for f in schema.fields])
 
     if not spark.catalog.tableExists(table_name):
-        print(f"Table {table_name} does not exist — creating on first run...")
-        writer = source_df.write.format("delta").mode("overwrite")
+        print(f"Table {table_name} does not exist — creating with column mapping enabled...")
+        writer = (source_df.write
+                  .format("delta")
+                  .mode("overwrite")
+                  .option("delta.columnMapping.mode", "name")
+                  .option("delta.minReaderVersion", "2")
+                  .option("delta.minWriterVersion", "5"))
+
         if partition_cols:
             writer = writer.partitionBy(*partition_cols)
+
         writer.saveAsTable(table_name)
+        print(f"✓ Table {table_name} created with column mapping enabled")
         return
 
     delta_table = DeltaTable.forName(spark, table_name)
@@ -61,6 +69,7 @@ def upsert_logic_bronze(
         .whenNotMatchedInsertAll()
         .execute()
     )
+    print(f"✓ Upsert complete")
 
 # COMMAND ----------
 
@@ -86,6 +95,7 @@ def upsert_logic(
         if partition_cols:
             writer = writer.partitionBy(*partition_cols)
         writer.saveAsTable(table_name)
+        print(f"✓ Table {table_name} created")
         return
 
     delta_table = DeltaTable.forName(spark, table_name)
@@ -99,3 +109,4 @@ def upsert_logic(
         .whenNotMatchedInsertAll()
         .execute()
     )
+    print(f"✓ Upsert complete")

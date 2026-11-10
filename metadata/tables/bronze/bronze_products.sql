@@ -7,4 +7,9 @@ CREATE TABLE IF NOT EXISTS bronze_lhdev.products (
   `Price per product` STRING
 )
 USING DELTA
-COMMENT 'Bronze layer - raw products data from source (keeps original column names with spaces)';
+TBLPROPERTIES (
+  'delta.columnMapping.mode' = 'name',
+  'delta.minReaderVersion' = '2',
+  'delta.minWriterVersion' = '5'
+)
+COMMENT 'Bronze layer - raw products data with column mapping enabled';

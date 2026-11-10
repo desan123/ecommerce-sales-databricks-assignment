@@ -12,4 +12,9 @@ CREATE TABLE IF NOT EXISTS bronze_lhdev.orders (
   `Profit` STRING
 )
 USING DELTA
-COMMENT 'Bronze layer - raw orders data from source (keeps original column names with spaces)';
+TBLPROPERTIES (
+  'delta.columnMapping.mode' = 'name',
+  'delta.minReaderVersion' = '2',
+  'delta.minWriterVersion' = '5'
+)
+COMMENT 'Bronze layer - raw orders data with column mapping enabled for spaces in column names';
