@@ -1,0 +1,8 @@
+environment: dev
+bronze_db: bronze_lhdev
+silver_db: silver_lhdev
+gold_db: gold_lhdev
+file_path: s3://your-bucket/raw                  # TODO: replace with actual S3/ADLS/GCS path
+bronze_path: s3://your-bucket/delta/bronze       # TODO: replace with actual bronze Delta path
+silver_path: s3://your-bucket/delta/silver       # TODO: replace with actual silver Delta path
+gold_path: s3://your-bucket/delta/gold           # TODO: replace with actual gold Delta path
