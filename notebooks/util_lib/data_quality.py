@@ -152,5 +152,5 @@ def run_dq_suite(
 def print_dq_summary(results: List[DQResult]):
     """Pretty print DQ results"""
     for r in results:
-        status = "✓ PASS" if r.passed else "✗ FAIL"
+        status = "PASS" if r.passed else "FAIL"
         print(f"{status} | {r.check_name}: {r.message}")

@@ -35,6 +35,9 @@ BRONZE_ORDERS_SCHEMA = StructType([
 BRONZE_CUSTOMERS_SCHEMA = StructType([
     StructField("Customer ID",   StringType(), nullable=False),
     StructField("Customer Name", StringType(), nullable=True),
+    StructField("email",         StringType(), nullable=True),
+    StructField("phone",         StringType(), nullable=True),
+    StructField("address",       StringType(), nullable=True),
     StructField("Segment",       StringType(), nullable=True),
     StructField("Country",       StringType(), nullable=True),
     StructField("City",          StringType(), nullable=True),
@@ -80,6 +83,9 @@ SILVER_ORDERS_SCHEMA = StructType([
 SILVER_CUSTOMERS_SCHEMA = StructType([
     StructField("customer_id",   StringType(), nullable=False),
     StructField("customer_name", StringType(), nullable=True),
+    StructField("email",         StringType(), nullable=True),
+    StructField("phone",         StringType(), nullable=True),
+    StructField("address",       StringType(), nullable=True),
     StructField("segment",       StringType(), nullable=True),
     StructField("country",       StringType(), nullable=True),
     StructField("city",          StringType(), nullable=True),
@@ -134,6 +140,7 @@ GOLD_DIM_PRODUCT_ENRICHED_SCHEMA = StructType([
 # COMMAND ----------
 
 GOLD_FACT_ORDERS_ENRICHED_SCHEMA = StructType([
+    StructField("row_id",         IntegerType(), nullable=True),
     StructField("order_id",       StringType(), nullable=False),
     StructField("order_date",     DateType(),   nullable=True),
     StructField("year",           IntegerType(), nullable=True),

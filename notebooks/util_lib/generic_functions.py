@@ -40,7 +40,11 @@ def upsert_logic_bronze(
         if field.name not in source_df.columns:
             source_df = source_df.withColumn(field.name, F.lit(None).cast(field.dataType))
 
-    source_df = source_df.select([f.name for f in schema.fields])
+    # Select in schema order and cast to the declared types (e.g. Excel numeric
+    # Postal Code -> string) so the table always matches the schema.
+    source_df = source_df.select(
+        [F.col(f"`{f.name}`").cast(f.dataType).alias(f.name) for f in schema.fields]
+    )
 
     if not spark.catalog.tableExists(table_name):
         print(f"Table {table_name} does not exist — creating with column mapping enabled...")
@@ -55,7 +59,7 @@ def upsert_logic_bronze(
             writer = writer.partitionBy(*partition_cols)
 
         writer.saveAsTable(table_name)
-        print(f"✓ Table {table_name} created with column mapping enabled")
+        print(f"Table {table_name} created with column mapping enabled")
         return
 
     delta_table = DeltaTable.forName(spark, table_name)
@@ -69,7 +73,7 @@ def upsert_logic_bronze(
         .whenNotMatchedInsertAll()
         .execute()
     )
-    print(f"✓ Upsert complete")
+    print(f"Upsert complete")
 
 # COMMAND ----------
 
@@ -95,7 +99,7 @@ def upsert_logic(
         if partition_cols:
             writer = writer.partitionBy(*partition_cols)
         writer.saveAsTable(table_name)
-        print(f"✓ Table {table_name} created")
+        print(f"Table {table_name} created")
         return
 
     delta_table = DeltaTable.forName(spark, table_name)
@@ -109,4 +113,23 @@ def upsert_logic(
         .whenNotMatchedInsertAll()
         .execute()
     )
-    print(f"✓ Upsert complete")
+    print(f"Upsert complete")
+
+# COMMAND ----------
+
+def overwrite_logic(df, table_name: str):
+    """
+    Full-refresh write of a derived (gold) table.
+
+    Gold tables are rebuilt entirely from Silver, so overwrite is idempotent and
+    avoids MERGE problems with NULL keys (e.g. orders whose product is missing
+    have a NULL category, and NULL = NULL never matches in a merge condition).
+    """
+    (
+        df.write
+        .format("delta")
+        .mode("overwrite")
+        .option("overwriteSchema", "true")
+        .saveAsTable(table_name)
+    )
+    print(f"{table_name} overwritten")

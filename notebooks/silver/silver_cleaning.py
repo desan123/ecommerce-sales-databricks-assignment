@@ -1,21 +1,13 @@
 # Databricks notebook source
-
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
 # MAGIC %md
 # MAGIC # Silver Layer Cleaning
 # MAGIC
 # MAGIC This notebook cleans and validates data from Bronze layer to Silver layer.
 # MAGIC
-# MAGIC **Transformations:**
-# MAGIC - Data type conversions
-# MAGIC - Deduplication
-# MAGIC - Normalization
-# MAGIC - Data quality checks
-# MAGIC
-# MAGIC **Source Tables:**
-# MAGIC - bronze_lhdev.orders, customers, products
-# MAGIC
-# MAGIC **Target Tables:**
-# MAGIC - silver_lhdev.orders, customers, products
 
 # COMMAND ----------
 
@@ -25,8 +17,8 @@
 # COMMAND ----------
 
 # Create widgets for configuration
-dbutils.widgets.text("bronze_db", "bronze_lhdev", "Bronze Database")
-dbutils.widgets.text("silver_db", "silver_lhdev", "Silver Database")
+dbutils.widgets.text("bronze_db", "ecom_dev.bronze_lhdev", "Bronze Database")
+dbutils.widgets.text("silver_db", "ecom_dev.silver_lhdev", "Silver Database")
 
 # Get widget values
 BRONZE_DB = dbutils.widgets.get("bronze_db")
@@ -42,15 +34,15 @@ print(f"Silver Database: {SILVER_DB}")
 
 # COMMAND ----------
 
-# MAGIC %run ../util_lib/transformations
+# MAGIC %run /Workspace/Users/sks12101997@gmail.com/assignment/notebooks/util_lib/transformations
 
 # COMMAND ----------
 
-# MAGIC %run ../util_lib/data_quality
+# MAGIC %run /Workspace/Users/sks12101997@gmail.com/assignment/notebooks/util_lib/data_quality
 
 # COMMAND ----------
 
-# MAGIC %run ../util_lib/generic_functions
+# MAGIC %run /Workspace/Users/sks12101997@gmail.com/assignment/notebooks/util_lib/generic_functions
 
 # COMMAND ----------
 
@@ -70,10 +62,6 @@ base_orders = spark.table(f"{BRONZE_DB}.orders")
 base_customers = spark.table(f"{BRONZE_DB}.customers")
 base_products = spark.table(f"{BRONZE_DB}.products")
 
-print(f"✓ Orders:    {base_orders.count():,} records")
-print(f"✓ Customers: {base_customers.count():,} records")
-print(f"✓ Products:  {base_products.count():,} records")
-
 # COMMAND ----------
 
 # MAGIC %md
@@ -87,7 +75,7 @@ print(f"✓ Products:  {base_products.count():,} records")
 # COMMAND ----------
 
 s_orders = clean_orders(base_orders)
-print(f"✓ Orders cleaned: {s_orders.count():,} records")
+print(f"Orders cleaned: {s_orders.count():,} records")
 display(s_orders.limit(5))
 
 # COMMAND ----------
@@ -98,8 +86,8 @@ display(s_orders.limit(5))
 # COMMAND ----------
 
 s_customers = clean_customers(base_customers)
-print(f"✓ Customers cleaned: {s_customers.count():,} records")
-display(s_customers.limit(5))
+print(f"Customers cleaned: {s_customers.count():,} records")
+display(s_customers.limit(10))
 
 # COMMAND ----------
 
@@ -109,7 +97,7 @@ display(s_customers.limit(5))
 # COMMAND ----------
 
 s_products = clean_products(base_products)
-print(f"✓ Products cleaned: {s_products.count():,} records")
+print(f"Products cleaned: {s_products.count():,} records")
 display(s_products.limit(5))
 
 # COMMAND ----------
@@ -133,12 +121,12 @@ dq_results = []
 # COMMAND ----------
 
 print("\n1. Checking uniqueness...")
-dq_results.append(check_uniqueness(s_orders, ["order_id"], "silver_orders"))
+dq_results.append(check_uniqueness(s_orders, ["row_id"], "silver_orders"))
 dq_results.append(check_uniqueness(s_customers, ["customer_id"], "silver_customers"))
 dq_results.append(check_uniqueness(s_products, ["product_id"], "silver_products"))
 
 for result in dq_results[-3:]:
-    status = "✓ PASSED" if result.passed else "✗ FAILED"
+    status = "PASSED" if result.passed else " FAILED"
     print(f"  {status}: {result.check_name}")
 
 # COMMAND ----------
@@ -154,7 +142,7 @@ dq_results.append(check_not_null(s_customers, ["customer_id"], "silver_customers
 dq_results.append(check_not_null(s_products, ["product_id"], "silver_products"))
 
 for result in dq_results[-3:]:
-    status = "✓ PASSED" if result.passed else "✗ FAILED"
+    status = "PASSED" if result.passed else " FAILED"
     print(f"  {status}: {result.check_name}")
 
 # COMMAND ----------
@@ -170,7 +158,7 @@ dq_results.append(check_volume(s_customers, "silver_customers", min_rows=1, max_
 dq_results.append(check_volume(s_products, "silver_products", min_rows=1, max_rows=100000))
 
 for result in dq_results[-3:]:
-    status = "✓ PASSED" if result.passed else "✗ FAILED"
+    status = "PASSED" if result.passed else " FAILED"
     print(f"  {status}: {result.check_name}")
 
 # COMMAND ----------
@@ -185,7 +173,7 @@ dq_results.append(check_referential_integrity(s_orders, "customer_id", s_custome
 dq_results.append(check_referential_integrity(s_orders, "product_id", s_products, "product_id", "orders", "products"))
 
 for result in dq_results[-2:]:
-    status = "✓ PASSED" if result.passed else "✗ FAILED"
+    status = "PASSED" if result.passed else " FAILED"
     print(f"  {status}: {result.check_name}")
 
 # COMMAND ----------
@@ -205,7 +193,7 @@ dq_df = run_dq_suite(spark, dq_results, suite_name="silver_cleaning")
     .saveAsTable(f"{SILVER_DB}.dq_check")
 )
 
-print("✓ DQ results logged to audit table")
+print("DQ results logged to audit table")
 
 # COMMAND ----------
 
@@ -219,12 +207,12 @@ critical_failures = [r for r in dq_results if not r.passed and
                      ("uniqueness" in r.check_name or "not_null" in r.check_name)]
 
 if critical_failures:
-    print("\n✗ CRITICAL DQ FAILURES DETECTED:")
+    print("\n CRITICAL DQ FAILURES DETECTED:")
     for failure in critical_failures:
         print(f"  - {failure.check_name}: {failure.details}")
     raise RuntimeError(f"Critical DQ failures: {[r.check_name for r in critical_failures]}")
 else:
-    print("\n✓ All critical DQ checks passed!")
+    print("\nAll critical DQ checks passed!")
 
 # COMMAND ----------
 
@@ -235,43 +223,11 @@ else:
 
 print("\nWriting to Silver layer...")
 
-upsert_logic(s_orders, f"{SILVER_DB}.orders", ["order_id"])
-print(f"✓ Orders written to {SILVER_DB}.orders")
+upsert_logic(s_orders, f"{SILVER_DB}.orders", ["row_id"])
+print(f"Orders written to {SILVER_DB}.orders")
 
 upsert_logic(s_customers, f"{SILVER_DB}.customers", ["customer_id"])
-print(f"✓ Customers written to {SILVER_DB}.customers")
+print(f"Customers written to {SILVER_DB}.customers")
 
 upsert_logic(s_products, f"{SILVER_DB}.products", ["product_id"])
-print(f"✓ Products written to {SILVER_DB}.products")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Verification: Silver Layer Summary
-
-# COMMAND ----------
-
-print("=" * 60)
-print("SILVER LAYER SUMMARY")
-print("=" * 60)
-
-orders_count = spark.table(f"{SILVER_DB}.orders").count()
-customers_count = spark.table(f"{SILVER_DB}.customers").count()
-products_count = spark.table(f"{SILVER_DB}.products").count()
-
-print(f"✓ Orders:    {orders_count:,} records")
-print(f"✓ Customers: {customers_count:,} records")
-print(f"✓ Products:  {products_count:,} records")
-print("=" * 60)
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## ✅ Silver Cleaning Complete!
-# MAGIC
-# MAGIC **Data Quality Summary:**
-# MAGIC - All uniqueness checks passed
-# MAGIC - All not-null checks passed
-# MAGIC - All referential integrity checks passed
-# MAGIC
-# MAGIC **Next Step:** Run the Gold Star Schema notebook to create enriched and aggregate tables.
+print(f"Products written to {SILVER_DB}.products")

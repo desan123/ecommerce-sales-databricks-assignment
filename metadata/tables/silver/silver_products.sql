@@ -1,8 +1,10 @@
-CREATE TABLE IF NOT EXISTS silver_lhdev.products (
+CREATE TABLE IF NOT EXISTS ecom_dev.silver_lhdev.products (
   product_id STRING NOT NULL,
-  product_name STRING,
   category STRING,
-  sub_category STRING
+  sub_category STRING,
+  product_name STRING,
+  state STRING,
+  unit_price DECIMAL(10,2)
 )
 USING DELTA
 COMMENT 'Silver layer - cleaned products data';

@@ -1,19 +1,12 @@
 # Databricks notebook source
-
+# /// script
+# [tool.databricks.environment]
+# environment_version = "6"
+# ///
 # MAGIC %md
 # MAGIC # Bronze Layer Ingestion
 # MAGIC
 # MAGIC This notebook loads raw data from CSV/JSON/Excel files into Bronze Delta tables.
-# MAGIC
-# MAGIC **Source Files:**
-# MAGIC - Orders.json
-# MAGIC - Products.csv
-# MAGIC - Customer.csv (or Customer.xlsx)
-# MAGIC
-# MAGIC **Target Tables:**
-# MAGIC - bronze_lhdev.orders
-# MAGIC - bronze_lhdev.customers
-# MAGIC - bronze_lhdev.products
 
 # COMMAND ----------
 
@@ -23,7 +16,7 @@
 # COMMAND ----------
 
 # Create widgets for configuration
-dbutils.widgets.text("raw_path", "dbfs:/FileStore/tables/", "Raw Data Path")
+dbutils.widgets.text("raw_path", "/Volumes/ecom_dev/default/files/", "Raw Data Path")
 dbutils.widgets.text("bronze_db", "bronze_lhdev", "Bronze Database")
 
 # Get widget values
@@ -40,7 +33,7 @@ print(f"Bronze Database: {BRONZE_DB}")
 
 # COMMAND ----------
 
-# MAGIC %run ../util_lib/schema_definitions
+# MAGIC %run /Workspace/Users/sks12101997@gmail.com/assignment/notebooks/util_lib/schema_definitions
 
 # COMMAND ----------
 
@@ -49,7 +42,7 @@ print(f"Bronze Database: {BRONZE_DB}")
 
 # COMMAND ----------
 
-# MAGIC %run ../util_lib/generic_functions
+# MAGIC %run /Workspace/Users/sks12101997@gmail.com/assignment/notebooks/util_lib/generic_functions
 
 # COMMAND ----------
 
@@ -68,14 +61,14 @@ orders_raw = (
     .json(f"{RAW_BASE}/Orders.json", schema=BRONZE_ORDERS_SCHEMA)
 )
 
-print(f"Orders read: {orders_raw.count()} records")
+print(f"Orders read: {orders_raw.count()}")
 display(orders_raw.limit(5))
 
 # COMMAND ----------
 
 # Upsert to Bronze table
-upsert_logic_bronze(orders_raw, f"{BRONZE_DB}.orders", ["Order ID"], BRONZE_ORDERS_SCHEMA)
-print("✓ Orders table created/updated successfully")
+# NOTE: "Order ID" is NOT unique (9994 line items, 5009 orders); "Row ID" is the unique key
+upsert_logic_bronze(orders_raw, f"{BRONZE_DB}.orders", ["Row ID"], BRONZE_ORDERS_SCHEMA)
 
 # COMMAND ----------
 
@@ -88,32 +81,20 @@ print("✓ Orders table created/updated successfully")
 
 # COMMAND ----------
 
+# DBTITLE 1,Cell 12
 # Try to read Excel, fallback to CSV if Excel reader not available
-try:
-    # Try Excel format first
-    customers_raw = (
-        spark.read
-        .format("com.crealytics.spark.excel")
-        .option("header", "true")
-        .option("inferSchema", "false")
-        .schema(BRONZE_CUSTOMERS_SCHEMA)
-        .load(f"{RAW_BASE}/Customer.xlsx")
-    )
-    print("✓ Successfully read Customer.xlsx using Excel reader")
-except:
-    # Fallback to CSV
-    print("Excel reader not available. Reading Customer.csv...")
-    customers_raw = (
-        spark.read
-        .option("header", True)
-        .option("encoding", "UTF-8")
-        .schema(BRONZE_CUSTOMERS_SCHEMA)
-        .csv(f"{RAW_BASE}/Customer.csv")
-    )
-    print("✓ Successfully read Customer.csv")
+
+# Try Excel format first
+customers_raw = (
+    spark.read
+    .option("headerRows", 1)
+    .excel(f"{RAW_BASE}/Customer.xlsx")
+)
+print("Successfully read Customer.xlsx using Excel reader")
 
 print(f"Customers read: {customers_raw.count()} records")
 display(customers_raw.limit(5))
+customers_raw.printSchema()
 
 # COMMAND ----------
 
@@ -124,7 +105,7 @@ upsert_logic_bronze(
     ["Customer ID"],
     BRONZE_CUSTOMERS_SCHEMA,
 )
-print("✓ Customers table created/updated successfully")
+print("Customers table created/updated successfully")
 
 # COMMAND ----------
 
@@ -137,13 +118,16 @@ print("✓ Customers table created/updated successfully")
 products_raw = (
     spark.read
     .option("header", True)
-    .option("encoding", "UTF-8")
+    .option("quote", '"')
+    .option("escape", '"')
+    .option("multiLine", "true")
+    .option("mode", "PERMISSIVE") 
     .schema(BRONZE_PRODUCTS_SCHEMA)
     .csv(f"{RAW_BASE}/Products.csv")
 )
 
 print(f"Products read: {products_raw.count()} records")
-display(products_raw.limit(5))
+display(products_raw.limit(100))
 
 # COMMAND ----------
 
@@ -151,66 +135,10 @@ display(products_raw.limit(5))
 upsert_logic_bronze(
     products_raw,
     f"{BRONZE_DB}.products",
-    ["Product ID"],
+    # "Product ID" alone is not unique (same id sold with different name/state/price)
+    ["Product ID", "Product Name", "State"],
     BRONZE_PRODUCTS_SCHEMA,
 )
-print("✓ Products table created/updated successfully")
+print("Products table created/updated successfully")
 
 # COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Verification: Bronze Layer Summary
-
-# COMMAND ----------
-
-print("=" * 60)
-print("BRONZE LAYER SUMMARY")
-print("=" * 60)
-
-orders_count = spark.table(f"{BRONZE_DB}.orders").count()
-customers_count = spark.table(f"{BRONZE_DB}.customers").count()
-products_count = spark.table(f"{BRONZE_DB}.products").count()
-
-print(f"✓ Orders:    {orders_count:,} records")
-print(f"✓ Customers: {customers_count:,} records")
-print(f"✓ Products:  {products_count:,} records")
-print("=" * 60)
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## Sample Data Preview
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Sample Orders
-
-# COMMAND ----------
-
-display(spark.table(f"{BRONZE_DB}.orders").limit(10))
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Sample Customers
-
-# COMMAND ----------
-
-display(spark.table(f"{BRONZE_DB}.customers").limit(10))
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Sample Products
-
-# COMMAND ----------
-
-display(spark.table(f"{BRONZE_DB}.products").limit(10))
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## ✅ Bronze Ingestion Complete!
-# MAGIC
-# MAGIC **Next Step:** Run the Silver Cleaning notebook to clean and validate data.

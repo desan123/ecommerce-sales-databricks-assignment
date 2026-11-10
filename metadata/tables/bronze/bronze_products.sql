@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS bronze_lhdev.products (
+CREATE TABLE IF NOT EXISTS ecom_dev.bronze_lhdev.products (
   `Product ID` STRING NOT NULL,
   `Category` STRING,
   `Sub-Category` STRING,

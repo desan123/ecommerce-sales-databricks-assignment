@@ -3,17 +3,17 @@
 # MAGIC %md
 # MAGIC # SQL Profit Analysis Queries
 # MAGIC
-# MAGIC This notebook contains SQL queries for profit analysis as per assignment requirements.
+# MAGIC Profit aggregates written in SQL (via `spark.sql`) on top of `agg_profit`.
+# MAGIC
+# MAGIC `agg_profit` is grain: year x category x sub_category x customer, so summing
+# MAGIC `total_profit` to any coarser grain is exact. `order_count` is intentionally
+# MAGIC not re-summed here (a distinct count cannot be added across groups).
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ## Setup
-
-# COMMAND ----------
-
-dbutils.widgets.text("gold_db", "gold_lhdev", "Gold Database")
+dbutils.widgets.text("gold_db", "ecom_dev.gold_lhdev", "Gold Database")
 GOLD_DB = dbutils.widgets.get("gold_db")
+print(f"Gold Database: {GOLD_DB}")
 
 # COMMAND ----------
 
@@ -22,32 +22,16 @@ GOLD_DB = dbutils.widgets.get("gold_db")
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC     year,
-# MAGIC     ROUND(SUM(total_profit), 2) AS total_profit,
-# MAGIC     ROUND(SUM(total_revenue), 2) AS total_revenue,
-# MAGIC     SUM(order_count) AS order_count
-# MAGIC FROM gold_lhdev.agg_profit
-# MAGIC WHERE year IS NOT NULL
-# MAGIC GROUP BY year
-# MAGIC ORDER BY year DESC
-
-# COMMAND ----------
-
 profit_by_year = spark.sql(f"""
 SELECT
     year,
-    ROUND(SUM(total_profit), 2) AS total_profit,
-    ROUND(SUM(total_revenue), 2) AS total_revenue,
-    SUM(order_count) AS order_count
+    ROUND(SUM(total_profit), 2) AS total_profit
 FROM {GOLD_DB}.agg_profit
 WHERE year IS NOT NULL
 GROUP BY year
-ORDER BY year DESC
+ORDER BY year
 """)
-
-profit_by_year.write.format("delta").mode("overwrite").saveAsTable(f"{GOLD_DB}.profit_by_year")
+display(profit_by_year)
 
 # COMMAND ----------
 
@@ -56,34 +40,17 @@ profit_by_year.write.format("delta").mode("overwrite").saveAsTable(f"{GOLD_DB}.p
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC     year,
-# MAGIC     category,
-# MAGIC     ROUND(SUM(total_profit), 2) AS total_profit,
-# MAGIC     ROUND(SUM(total_revenue), 2) AS total_revenue,
-# MAGIC     SUM(order_count) AS order_count
-# MAGIC FROM gold_lhdev.agg_profit
-# MAGIC WHERE year IS NOT NULL AND category IS NOT NULL
-# MAGIC GROUP BY year, category
-# MAGIC ORDER BY year DESC, total_profit DESC
-
-# COMMAND ----------
-
 profit_by_year_category = spark.sql(f"""
 SELECT
     year,
     category,
-    ROUND(SUM(total_profit), 2) AS total_profit,
-    ROUND(SUM(total_revenue), 2) AS total_revenue,
-    SUM(order_count) AS order_count
+    ROUND(SUM(total_profit), 2) AS total_profit
 FROM {GOLD_DB}.agg_profit
 WHERE year IS NOT NULL AND category IS NOT NULL
 GROUP BY year, category
-ORDER BY year DESC, total_profit DESC
+ORDER BY year, category
 """)
-
-profit_by_year_category.write.format("delta").mode("overwrite").saveAsTable(f"{GOLD_DB}.profit_by_year_category")
+display(profit_by_year_category)
 
 # COMMAND ----------
 
@@ -92,35 +59,17 @@ profit_by_year_category.write.format("delta").mode("overwrite").saveAsTable(f"{G
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC     customer_id,
-# MAGIC     customer_name,
-# MAGIC     ROUND(SUM(total_profit), 2) AS total_profit,
-# MAGIC     ROUND(SUM(total_revenue), 2) AS total_revenue,
-# MAGIC     SUM(order_count) AS order_count
-# MAGIC FROM gold_lhdev.agg_profit
-# MAGIC WHERE customer_id IS NOT NULL
-# MAGIC GROUP BY customer_id, customer_name
-# MAGIC ORDER BY total_profit DESC
-# MAGIC LIMIT 100
-
-# COMMAND ----------
-
 profit_by_customer = spark.sql(f"""
 SELECT
     customer_id,
     customer_name,
-    ROUND(SUM(total_profit), 2) AS total_profit,
-    ROUND(SUM(total_revenue), 2) AS total_revenue,
-    SUM(order_count) AS order_count
+    ROUND(SUM(total_profit), 2) AS total_profit
 FROM {GOLD_DB}.agg_profit
 WHERE customer_id IS NOT NULL
 GROUP BY customer_id, customer_name
 ORDER BY total_profit DESC
 """)
-
-profit_by_customer.write.format("delta").mode("overwrite").saveAsTable(f"{GOLD_DB}.profit_by_customer")
+display(profit_by_customer)
 
 # COMMAND ----------
 
@@ -129,39 +78,15 @@ profit_by_customer.write.format("delta").mode("overwrite").saveAsTable(f"{GOLD_D
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC     customer_id,
-# MAGIC     customer_name,
-# MAGIC     year,
-# MAGIC     ROUND(SUM(total_profit), 2) AS total_profit,
-# MAGIC     ROUND(SUM(total_revenue), 2) AS total_revenue,
-# MAGIC     SUM(order_count) AS order_count
-# MAGIC FROM gold_lhdev.agg_profit
-# MAGIC WHERE customer_id IS NOT NULL AND year IS NOT NULL
-# MAGIC GROUP BY customer_id, customer_name, year
-# MAGIC ORDER BY total_profit DESC, year DESC
-# MAGIC LIMIT 100
-
-# COMMAND ----------
-
 profit_by_customer_year = spark.sql(f"""
 SELECT
     customer_id,
     customer_name,
     year,
-    ROUND(SUM(total_profit), 2) AS total_profit,
-    ROUND(SUM(total_revenue), 2) AS total_revenue,
-    SUM(order_count) AS order_count
+    ROUND(SUM(total_profit), 2) AS total_profit
 FROM {GOLD_DB}.agg_profit
 WHERE customer_id IS NOT NULL AND year IS NOT NULL
 GROUP BY customer_id, customer_name, year
-ORDER BY total_profit DESC, year DESC
+ORDER BY customer_id, year
 """)
-
-profit_by_customer_year.write.format("delta").mode("overwrite").saveAsTable(f"{GOLD_DB}.profit_by_customer_year")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## ✅ All SQL Queries Complete!
+display(profit_by_customer_year)

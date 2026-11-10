@@ -1,21 +1,22 @@
 # Databricks notebook source
-
 # MAGIC %md
-# MAGIC # Data Quality Functions
+# MAGIC # Transformation 
 # MAGIC
-# MAGIC This notebook contains data quality check functions for validation.
+# MAGIC This notebook contains all the transformations functions
 
 # COMMAND ----------
+
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
 # COMMAND ----------
 
-# MAGIC %run /notebooks/util_lib/utils
+# MAGIC %run /Workspace/Users/sks12101997@gmail.com/assignment/notebooks/util_lib/utils
 
 # COMMAND ----------
 
+# DBTITLE 1,Transformations
 # ---------------------------------------------------------------------------
 # Bronze → Silver transformations
 # ---------------------------------------------------------------------------
@@ -46,8 +47,8 @@ def clean_orders(df: DataFrame) -> DataFrame:
         .withColumnRenamed("Profit", "profit")
     )
 
-    # Drop duplicates
-    df = df.dropDuplicates(["order_id"])
+    # Drop duplicates. order_id repeats across line items, so row_id is the unique key.
+    df = df.dropDuplicates(["row_id"])
 
     # Type casting and parsing
     df = (df
@@ -100,6 +101,9 @@ def clean_customers(df: DataFrame) -> DataFrame:
     # Normalize and standardize
     df = (df
         .withColumn("customer_name", norm(F.trim(F.col("customer_name"))))
+        .withColumn("email", F.lower(F.trim(F.col("email"))))
+        .withColumn("phone", clean_phone_col("phone"))
+        .withColumn("address", F.trim(F.regexp_replace(F.col("address"), r"\s*[\r\n]+\s*", ", ")))
         .withColumn("country", norm(F.trim(F.col("country"))))
         .withColumn("city", norm(F.trim(F.col("city"))))
         .withColumn("state", F.trim(F.col("state")))
@@ -107,10 +111,6 @@ def clean_customers(df: DataFrame) -> DataFrame:
         .withColumn("segment", F.initcap(F.trim(F.col("segment"))))
         .withColumn("postal_code", F.trim(F.col("postal_code")))
     )
-
-    # Clean phone numbers if column exists
-    if "Phone" in df.columns:
-        df = df.withColumn("phone", clean_phone_col("Phone"))
 
     # Filter out records with null customer_id
     df = df.filter(F.col("customer_id").isNotNull())
@@ -139,8 +139,10 @@ def clean_products(df: DataFrame) -> DataFrame:
         .withColumnRenamed("Price per product", "unit_price")
     )
 
-    # Drop duplicates
-    df = df.dropDuplicates(["product_id"])
+    # product_id repeats in the source (different name/state/price). Orders carry no
+    # state, so keep one deterministic row per product_id to avoid fan-out in joins.
+    w = Window.partitionBy("product_id").orderBy(F.col("state").asc_nulls_last(), F.col("product_name").asc_nulls_last())
+    df = df.withColumn("_rn", F.row_number().over(w)).filter(F.col("_rn") == 1).drop("_rn")
 
     # Normalize and standardize
     df = (df
@@ -183,9 +185,9 @@ def build_enriched_customer(silver_customers: DataFrame, silver_orders: DataFram
     enriched = (
         silver_customers
         .join(order_stats, on="customer_id", how="left")
-        .withColumn("total_orders", F.coalesce(F.col("total_orders"), F.lit(0)))
-        .withColumn("total_revenue", F.round(F.coalesce(F.col("total_revenue"), F.lit(0.0)), 2))
-        .withColumn("total_profit", F.round(F.coalesce(F.col("total_profit"), F.lit(0.0)), 2))
+        .withColumn("total_orders", F.coalesce(F.col("total_orders"), F.lit(0).cast("long")))
+        .withColumn("total_revenue", F.round(F.coalesce(F.col("total_revenue"), F.lit(0)).cast("decimal(18,2)"), 2))
+        .withColumn("total_profit", F.round(F.coalesce(F.col("total_profit"), F.lit(0)).cast("decimal(18,2)"), 2))
     )
 
     return enriched.select(
@@ -216,9 +218,9 @@ def build_enriched_product(silver_products: DataFrame, silver_orders: DataFrame)
     enriched = (
         silver_products
         .join(product_stats, on="product_id", how="left")
-        .withColumn("total_quantity_sold", F.coalesce(F.col("total_quantity_sold"), F.lit(0)))
-        .withColumn("total_revenue", F.round(F.coalesce(F.col("total_revenue"), F.lit(0.0)), 2))
-        .withColumn("total_profit", F.round(F.coalesce(F.col("total_profit"), F.lit(0.0)), 2))
+        .withColumn("total_quantity_sold", F.coalesce(F.col("total_quantity_sold"), F.lit(0).cast("long")))
+        .withColumn("total_revenue", F.round(F.coalesce(F.col("total_revenue"), F.lit(0)).cast("decimal(18,2)"), 2))
+        .withColumn("total_profit", F.round(F.coalesce(F.col("total_profit"), F.lit(0)).cast("decimal(18,2)"), 2))
     )
 
     return enriched.select(
@@ -255,6 +257,11 @@ def build_enriched_orders(
             on="product_id",
             how="left"
         )
+        # Orders whose customer/product is missing in the dimension tables are kept
+        # (labelled "Unknown") so profit totals always reconcile with the source.
+        .withColumn("customer_name", F.coalesce(F.col("customer_name"), F.lit("Unknown")))
+        .withColumn("category", F.coalesce(F.col("category"), F.lit("Unknown")))
+        .withColumn("sub_category", F.coalesce(F.col("sub_category"), F.lit("Unknown")))
         # Extract year and month
         .withColumn("year", F.year(F.col("order_date")))
         .withColumn("month", F.month(F.col("order_date")))
@@ -263,7 +270,7 @@ def build_enriched_orders(
     )
 
     return enriched.select(
-        "order_id", "order_date", "year", "month",
+        "row_id", "order_id", "order_date", "year", "month",
         "customer_id", "customer_name", "country", "region", "segment",
         "product_id", "product_name", "category", "sub_category",
         "quantity", "price", "discount", "profit"
@@ -293,7 +300,7 @@ def build_aggregate_profit(fact_orders_enriched: DataFrame) -> DataFrame:
             F.round(F.sum("profit"), 2).alias("total_profit"),
             F.round(F.sum("price"), 2).alias("total_revenue"),
             F.round(F.sum("discount"), 2).alias("total_discount"),
-            F.count("order_id").alias("order_count")
+            F.countDistinct("order_id").alias("order_count")
         )
     )
 

@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS bronze_lhdev.orders (
+CREATE TABLE IF NOT EXISTS ecom_dev.bronze_lhdev.orders (
   `Row ID` STRING,
   `Order ID` STRING NOT NULL,
   `Order Date` STRING,

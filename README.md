@@ -1,42 +1,38 @@
 # E-commerce Sales Data Processing with Databricks
 
-**Author:** Santosh Kumar Shaw  
-**Date:** Updated for E-commerce Assignment
+**Author:** Santosh Kumar Shaw
 
 ---
 
 ## Overview
 
-This project implements a scalable, efficient, and reliable data engineering solution using Databricks to process and analyze e-commerce sales data. The solution provides valuable insights for business stakeholders through a medallion architecture (Bronze → Silver → Gold).
+A Databricks / PySpark pipeline that processes e-commerce orders, customers and products into analytics-ready Delta tables using a medallion architecture (Bronze → Silver → Gold).
 
-The pipeline processes orders, customers, and products data to create enriched dimensions, fact tables with profit calculations, and aggregated analytics tables.
+```
+Raw files (Orders.json, Customer.xlsx, Products.csv)
+        │
+        ▼
+  Bronze  ── raw ingestion, all strings, original column names
+        │
+        ▼
+  Silver  ── cleaned, typed, de-duplicated, DQ-checked
+        │
+        ▼
+  Gold    ── enriched dimensions, enriched fact, profit aggregate,
+             SQL profit outputs
+```
+
+All tables are Delta tables in the `ecom_dev` catalog (`bronze_lhdev`, `silver_lhdev`, `gold_lhdev`).
 
 ---
 
-## Architecture
+## Source Data
 
-```
-Raw Files (CSV)
-        │
-        ▼
-  Bronze Layer  ──── raw ingestion, schema enforcement
-        │
-        ▼
-  Silver Layer  ──── cleaned, validated, typed data
-        │
-        ▼
-  Gold Layer    ──── Enriched dimensions + facts
-                     + Aggregate profit tables
-                     + SQL analytics queries
-```
-
-**Storage Format: Delta Lake**
-
-Delta Lake provides:
-- **ACID transactions** for reliable upsert operations
-- **Schema evolution** for handling data changes
-- **Time-travel** for auditing and rollback
-- **Performance optimizations** through Z-ordering and compaction
+| File | Format | Rows | Notes |
+|---|---|---|---|
+| `dataset/Orders.json` | JSON array | 9,994 | One row per **order line**. `Order ID` is **not** unique (5,009 distinct); `Row ID` is. Dates are `d/M/yyyy`. |
+| `dataset/Customer.xlsx` | Excel | 793 | Columns: Customer ID, Customer Name, email, phone, address, Segment, Country, City, State, Postal Code, Region. `Customer ID` is unique. Postal Code is numeric in Excel. |
+| `dataset/Products.csv` | CSV | 1,851 | `Product ID` is **not** unique (1,818 distinct): the same ID appears with different name, state and price. |
 
 ---
 
@@ -44,377 +40,135 @@ Delta Lake provides:
 
 ```
 assignment/
-├── configs/
-│   └── config.yaml                          # Configuration for database paths
-├── dataset/
-│   ├── customers.csv                        # Sample customer data (15 records)
-│   ├── orders.csv                          # Sample orders (50 transactions, 2023-2024)
-│   └── products.csv                        # Sample product catalog (20 products)
-├── metadata/
-│   └── tables/
-│       ├── bronze/                         # Bronze layer DDL scripts
-│       │   ├── bronze_orders.sql
-│       │   ├── bronze_customers.sql
-│       │   └── bronze_products.sql
-│       ├── silver/                         # Silver layer DDL scripts
-│       │   ├── silver_orders.sql
-│       │   ├── silver_customers.sql
-│       │   └── silver_products.sql
-│       ├── gold/                           # Gold layer DDL scripts
-│       │   ├── dim_customer_enriched.sql
-│       │   ├── dim_product_enriched.sql
-│       │   ├── fact_orders_enriched.sql
-│       │   └── agg_profit.sql
-│       └── dq_results/
-│           └── dq_check.sql                # Data quality audit table
+├── configs/config.yaml
+├── dataset/                       # Orders.json, Customer.xlsx, Products.csv
+├── metadata/tables/               # DDL scripts
+│   ├── bronze/                    # orders, customers, products
+│   ├── silver/                    # orders, customers, products
+│   ├── gold/                      # dim_customer_enriched, dim_product_enriched,
+│   │                              # fact_orders_enriched, agg_profit
+│   └── dq_results/dq_check.sql
 ├── notebooks/
-│   ├── bronze/
-│   │   └── bronze_ingestion.py             # Load raw CSV → Bronze Delta
-│   ├── silver/
-│   │   └── silver_cleaning.py              # Clean, validate, type cast
-│   ├── gold/
-│   │   ├── gold_star_schema.py             # Create enriched + aggregate tables
-│   │   └── sql_profit_queries.py           # SQL analytics queries
-│   ├── tests/
-│   │   └── test_transformations.py         # Comprehensive PySpark unit tests
-│   └── util_lib/
-│       ├── schema_definitions.py           # All StructType schemas
-│       ├── transformations.py              # Business transformation logic
-│       ├── data_quality.py                 # DQ check functions
-│       ├── generic_functions.py            # Reusable utilities (upsert logic)
-│       └── utils.py                        # Date parsing, normalization
-└── README.md                                # This file
+│   ├── bronze/bronze_ingestion.py
+│   ├── silver/silver_cleaning.py
+│   ├── gold/gold_star_schema.py
+│   ├── gold/sql_profit_queries.py
+│   ├── tests/test_transformations.py   # plain-Python unit tests (notebook)
+│   └── util_lib/                  # schema_definitions, transformations, 
+└── README.md
 ```
 
 ---
 
 ## Data Model
 
-### Bronze Layer (Raw Data)
-All string types, raw from CSV:
-- **orders**: order_id, customer_id, product_id, order_date, quantity, unit_price, unit_cost
-- **customers**: customer_id, customer_name, country, city, email
-- **products**: product_id, product_name, category, sub_category
+### Bronze (raw, all strings, original column names)
+- `orders`: Row ID, Order ID, Order Date, Ship Date, Ship Mode, Customer ID, Product ID, Quantity, Price, Discount, Profit. Merge key: **Row ID**.
+- `customers`: Customer ID, Customer Name, email, phone, address, Segment, Country, City, State, Postal Code, Region. Merge key: Customer ID.
+- `products`: Product ID, Category, Sub-Category, Product Name, State, Price per product. Merge key: **Product ID + Product Name + State**.
 
-### Silver Layer (Cleaned Data)
-Typed, validated, deduplicated:
-- **orders**: order_date → DateType, quantity → IntegerType, prices → DecimalType(10,2)
-- **customers**: normalized names, lowercased emails
-- **products**: title-cased categories
+Delta column mapping is enabled because column names contain spaces.
 
-### Gold Layer (Business Analytics)
+### Silver (snake_case, typed, cleaned)
+- `orders`: `row_id` INT, `order_date`/`ship_date` DATE, `quantity` INT, `price` DECIMAL(10,2), `discount` DECIMAL(5,2), `profit` DECIMAL(10,2). Key: **row_id**.
+- `customers`: trimmed and NFC-normalised names, lowercased `email`, `phone` reduced to 10 digits (else NULL), flattened `address`, title-cased `segment`.
+- `products`: title-cased category / sub-category, `unit_price` DECIMAL(10,2). One row per `product_id`.
 
-#### Enriched Dimensions
-1. **dim_customer_enriched**
-   - Customer base attributes + total_orders, total_revenue
+### Gold
+| Table | Description |
+|---|---|
+| `dim_customer_enriched` | Customer attributes + `total_orders`, `total_revenue`, `total_profit` |
+| `dim_product_enriched` | Product attributes + `total_quantity_sold`, `total_revenue`, `total_profit` |
+| `fact_orders_enriched` | One row per order line: order info (`row_id`, `order_id`, `order_date`, `year`, `month`), **profit rounded to 2 decimals**, customer name / country / region / segment, product name / category / sub-category, quantity, price, discount |
+| `agg_profit` | Grain: year × category × sub-category × customer. Metrics: `total_profit`, `total_revenue`, `total_discount`, `order_count` (distinct orders) |
+| `profit_by_year`, `profit_by_year_category`, `profit_by_customer`, `profit_by_customer_year` | SQL outputs built on `agg_profit` |
 
-2. **dim_product_enriched**
-   - Product base attributes + total_quantity_sold, total_revenue
-
-#### Enriched Fact Table
-3. **fact_orders_enriched**
-   - Order information (order_id, order_date, year)
-   - Customer details (customer_name, country)
-   - Product details (product_name, category, sub_category)
-   - Financial metrics:
-     - revenue = quantity × unit_price
-     - cost = quantity × unit_cost
-     - **profit = revenue - cost (rounded to 2 decimals)**
-
-#### Aggregate Table
-4. **agg_profit**
-   - Dimensions: year, category, sub_category, customer_id, customer_name
-   - Metrics: total_profit, total_revenue, total_cost, order_count
-   - All aggregates rounded to 2 decimal places
+Gold tables are fully rebuilt from Silver on each run (`overwrite_logic`), which keeps them idempotent and avoids MERGE issues with NULL keys.
 
 ---
 
-## Assignment Requirements Implementation
+## Assignment Requirements → Implementation
 
-### Task 1: Create raw tables for each source dataset
-Implemented in `notebooks/bronze/bronze_ingestion.py`:
-- `bronze_lhdev.orders`
-- `bronze_lhdev.customers`
-- `bronze_lhdev.products`
-
-### Task 2: Create enriched tables for customers and products
-Implemented in `notebooks/gold/gold_star_schema.py`:
-- `gold_lhdev.dim_customer_enriched` (with total_orders, total_revenue)
-- `gold_lhdev.dim_product_enriched` (with total_quantity_sold, total_revenue)
-
-### Task 3: Create enriched table with order info, profit, customer & product details
-Implemented as `gold_lhdev.fact_orders_enriched`:
-- Order information
-- **Profit rounded to 2 decimal places**
-- Customer name and country
-- Product category and sub category
-
-### Task 4: Create aggregate table showing profit by Year, Category, Sub Category, Customer
-Implemented as `gold_lhdev.agg_profit`:
-- Aggregated by: year, category, sub_category, customer
-- Metrics: total_profit, total_revenue, total_cost, order_count
-
-### Task 5: SQL queries for profit aggregations
-Implemented in `notebooks/gold/sql_profit_queries.py`:
-1. Profit by Year
-2. Profit by Year + Product Category
-3. Profit by Customer
-4. Profit by Customer + Year
-
-### Task 6: Unit Tests (PySpark)
-Implemented in `notebooks/tests/test_transformations.py`:
-- Test classes for all transformations
-- Covers happy path, edge cases, data validation
-- Uses PySpark (not SQL) for all tests
+| Requirement | Where |
+|---|---|
+| Raw tables for each source dataset | `notebooks/bronze/bronze_ingestion.py` → `orders`, `customers`, `products` |
+| Enriched customer and product tables | `gold_star_schema.py` → `dim_customer_enriched`, `dim_product_enriched` |
+| Enriched orders table (order info, profit to 2 dp, customer name and country, product category and sub-category) | `gold_star_schema.py` → `fact_orders_enriched` |
+| Aggregate by year, category, sub-category, customer | `gold_star_schema.py` → `agg_profit` |
+| SQL: profit by Year; Year + Category; Customer; Customer + Year | `sql_profit_queries.py` (`spark.sql`) |
+| PySpark (not SQL) for transformations | `util_lib/transformations.py` |
+| Unit tests | `notebooks/tests/test_transformations.py` |
 
 ---
 
 ## How to Run
 
-### Prerequisites
-- Databricks workspace with cluster
-- PySpark environment
-- Delta Lake support
+Set the widgets (defaults shown) and run the notebooks in this order. Notebook imports use absolute workspace paths (`/Workspace/Users/<user>/assignment/notebooks/...`); update them if your workspace path differs.
 
-### Step 1: Configuration
-Update `configs/config.yaml`:
-```yaml
-environment: dev
-bronze_db: bronze_lhdev
-silver_db: silver_lhdev
-gold_db: gold_lhdev
-file_path: dbfs:/FileStore/ecommerce/raw     # Your path
-bronze_path: dbfs:/delta/bronze
-silver_path: dbfs:/delta/silver
-gold_path: dbfs:/delta/gold
-```
+1. **Create DDLs** (optional): run the scripts under `metadata/tables`.
+2. **`bronze/bronze_ingestion.py`** — widgets `raw_path` (default `/Volumes/ecom_dev/default/files/`), `bronze_db`. Reads Customer.xlsx with the Databricks Excel reader.
+3. **`silver/silver_cleaning.py`** — widgets `bronze_db` / `silver_db` (default `ecom_dev.bronze_lhdev` / `ecom_dev.silver_lhdev`). Runs cleaning, DQ checks, logs to `dq_check`, writes Silver.
+4. **`gold/gold_star_schema.py`** — widgets `silver_db` / `gold_db`.
+5. **`gold/sql_profit_queries.py`** — widget `gold_db`. Ends with a reconciliation query: all four outputs and the fact table must show the same total profit.
+6. **`tests/test_transformations.py`** — plain-Python tests (each prints `Test Passed` / `Test Failed`). The last cell prints a summary and fails the notebook if any test failed.
 
-### Step 2: Upload Data
-Upload datasets to your configured `file_path`:
-```
-dbfs:/FileStore/ecommerce/raw/
-├── customers.csv
-├── orders.csv
-└── products.csv
-```
-
-### Step 3: Execute Notebooks in Order
-
-1. **Bronze Ingestion**
-   ```python
-   %run /notebooks/bronze/bronze_ingestion.py
-   ```
-   - Loads raw CSV files
-   - Creates bronze Delta tables
-   - Uses upsert logic (idempotent)
-
-2. **Silver Cleaning**
-   ```python
-   %run /notebooks/silver/silver_cleaning.py
-   ```
-   - Applies transformations
-   - Runs data quality checks
-   - Writes to silver layer
-
-3. **Gold Star Schema**
-   ```python
-   %run /notebooks/gold/gold_star_schema.py
-   ```
-   - Creates enriched dimensions
-   - Creates enriched fact table
-   - Creates aggregate profit table
-
-4. **SQL Profit Queries**
-   ```python
-   %run /notebooks/gold/sql_profit_queries.py
-   ```
-   - Runs SQL analytics queries
-   - Saves results for reporting
-
-5. **Run Unit Tests (Optional)**
-   ```python
-   %run /notebooks/tests/test_transformations.py
-   ```
-   - Validates all transformations
-   - Ensures correctness
+If you previously ran an older version, drop the existing bronze / silver / gold tables first (the schemas and merge keys changed).
 
 ---
 
-## Data Quality Checks
+## Data Quality & Assumptions
 
-Implemented in `notebooks/util_lib/data_quality.py`:
+Checks (`util_lib/data_quality.py`), logged to `silver_lhdev.dq_check`:
+- Uniqueness: orders on `row_id`, customers on `customer_id`, products on `product_id`
+- Not-null on key columns
+- Volume bounds
+- Referential integrity: orders → customers and orders → products
 
-### Uniqueness Checks
-- Primary key uniqueness (order_id, customer_id, product_id)
+Uniqueness and not-null failures stop the run. Referential integrity is logged only.
 
-### Not-Null Checks
-- Critical fields validation
-
-### Volume Checks
-- Min/max row count validation
-
-### Referential Integrity
-- Foreign key validation (orders → customers, orders → products)
-
-### Data Validation
-- Negative quantity/price filtering
-- Invalid date handling
-- Duplicate removal
-
-All DQ results logged to `silver_lhdev.dq_check` table.
+Assumptions and decisions:
+- **Order ID repeats** across line items, so `Row ID` identifies a line. Order counts use `countDistinct(order_id)`.
+- **Product ID repeats** with different state / name / price, and orders carry no state. Silver keeps one deterministic row per `product_id` (lowest state, then name). Bronze keeps all variants.
+- **Price** is treated as the line total, so revenue = sum of `Price`.
+- **Profit** is supplied in the source; it is cast to DECIMAL(10,2) and rounded to 2 decimals, not recomputed.
+- **Missing references:** about 204 order lines reference product IDs that are not in Products.csv. They are kept and labelled `Unknown` in the fact table so profit totals reconcile with the source.
+- **Dates** are parsed against several formats; `d/M/yyyy` has priority. Unparseable dates become NULL.
+- Invalid rows (null keys, quantity ≤ 0) are filtered out in Silver.
 
 ---
 
-## Key Transformations
+## Unit Tests
 
-### Bronze → Silver
-```python
-def clean_orders(df):
-    # 1. Type casting: string → date, int, decimal
-    # 2. Deduplication by order_id
-    # 3. Filter invalid records (null PKs, negative values)
-    # 4. Return cleaned DataFrame
+`notebooks/tests/test_transformations.py` (plain Python classes with try/except/else, PySpark, run on a Databricks cluster via `%run` of `util_lib`):
+
+- **TestNormalizeUnicode (5):** None, plain ASCII, NFC normalisation, Chinese characters, empty string
+- **TestParseDateCol (4):** d/M/yyyy, d/M priority over M/d, ISO format, invalid / None → NULL
+- **TestCleanPhoneCol (2):** valid formats, invalid → NULL
+- **TestCleanOrders (6):** renames and types, profit rounding, multiple lines per order kept, duplicate Row ID removed, invalid rows filtered, bad date → NULL
+- **TestCleanCustomers (5):** standardisation, phone cleaning, address flattening, duplicates / null IDs, NFC normalisation
+- **TestCleanProducts (3):** columns and types, deterministic duplicate collapse, null ID filtered
+- **TestBuildEnrichedCustomer (2):** totals per customer, customer with no orders
+- **TestBuildEnrichedProduct (1):** totals per product
+- **TestBuildEnrichedOrders (5):** enrichment and columns, 2-decimal profit, no join fan-out, Unknown for missing references, NULL date → NULL year
+- **TestBuildAggregateProfit (4):** grain and sums, distinct order count, reconciliation with the fact table, SQL rollups
+
+37 tests in total (10 test classes).
+
+### Running the tests
+Run `notebooks/tests/test_transformations.py` as a notebook on a cluster. The first cells `%run` the `utils` and `transformations` notebooks, so the workspace paths at the top must match your workspace.
+
+Each test prints its own result:
 ```
-
-### Silver → Gold
-```python
-def build_enriched_orders(orders, customers, products):
-    # 1. Join orders with customers (get name, country)
-    # 2. Join with products (get category, sub_category)
-    # 3. Calculate: revenue, cost, profit (rounded to 2 decimals)
-    # 4. Extract year from order_date
-    # 5. Return enriched fact table
+Test Passed : clean_orders: renames and types
+Test Failed : clean_orders: bad date -> NULL -> AssertionError(...)
 ```
-
-```python
-def build_aggregate_profit(fact_orders):
-    # Aggregate by: year, category, sub_category, customer
-    # Sum: profit, revenue, cost
-    # Count: orders
-    # Round all decimals to 2 places
-```
-
----
-
-## Sample SQL Queries
-
-### Profit by Year
-```sql
-SELECT year, ROUND(SUM(total_profit), 2) AS total_profit
-FROM gold_lhdev.agg_profit
-WHERE year IS NOT NULL
-GROUP BY year
-ORDER BY year DESC;
-```
-
-### Top 10 Profitable Customers
-```sql
-SELECT customer_name, ROUND(SUM(total_profit), 2) AS total_profit
-FROM gold_lhdev.agg_profit
-GROUP BY customer_id, customer_name
-ORDER BY total_profit DESC
-LIMIT 10;
-```
-
-### Profit by Product Category
-```sql
-SELECT category, sub_category, ROUND(SUM(total_profit), 2) AS total_profit
-FROM gold_lhdev.agg_profit
-GROUP BY category, sub_category
-ORDER BY total_profit DESC;
-```
-
-### Customer + Year Profit Trend
-```sql
-SELECT customer_name, year, ROUND(SUM(total_profit), 2) AS total_profit
-FROM gold_lhdev.agg_profit
-WHERE customer_id = 'C001'
-GROUP BY customer_id, customer_name, year
-ORDER BY year;
-```
-
----
-
-## Test Coverage
-
-Comprehensive PySpark unit tests in `notebooks/tests/test_transformations.py`:
-
-### Test Classes
-1. **TestCleanOrders** (6 test cases)
-   - Basic cleaning
-   - Duplicate removal
-   - Invalid record filtering
-   - Date parsing
-   - Type casting validation
-
-2. **TestCleanCustomers** (4 test cases)
-   - Basic cleaning
-   - Duplicate removal
-   - Null ID filtering
-   - Email lowercasing
-
-3. **TestCleanProducts** (4 test cases)
-   - Basic cleaning
-   - Duplicate removal
-   - Null ID filtering
-   - Title-case categories
-
-4. **TestBuildEnrichedCustomer** (2 test cases)
-   - Basic enrichment with orders
-   - Customer with no orders (edge case)
-
-5. **TestBuildEnrichedOrders** (3 test cases)
-   - Basic enrichment
-   - Profit calculation validation
-   - Year extraction
-
-6. **TestBuildAggregateProfit** (1 test case)
-   - Aggregation by all dimensions
-
-### Running Tests
-```python
-%run /notebooks/tests/test_transformations.py
-```
-
-Output shows:
-- Test results (pass/fail)
-- Detailed error messages
-- Assertion validations
-
----
-
-## Performance Optimizations
-
-1. **Delta Format**: ACID transactions, efficient upserts
-2. **Upsert Logic**: Merge-based incremental updates
-3. **Partitioning**: Optional by date for large datasets
-4. **Schema Evolution**: Handles new columns gracefully
-5. **Predicate Pushdown**: Filter at source
-6. **Caching**: Reuse Silver tables in Gold layer
-
----
-
-## Business Insights Enabled
-
-The solution answers:
-- **Which products are most profitable?**
-- **Which customers generate the highest profit?**
-- **How does profitability trend over time (by year)?**
-- **Which product categories drive the most revenue?**
-- **What is the profit margin by sub-category?**
-- **Which customers have declining/growing profit trends?**
+The last cell prints `N passed, M failed, 37 total` and raises an error if `M > 0`, so a scheduled job running this notebook fails when a test fails.
 
 ---
 
 ## Author
 Santosh Kumar Shaw
 
----
-
 ## AI Statement
 
-AI tools were used to assist with:
-- Refining documentation
-- Suggesting test case scenarios
-
-All core logic, transformations, and business rules were implemented and validated manually.
+AI tools were used to assist with documentation, debugging schema issues and drafting test cases. The transformations and business rules were reviewed against the provided datasets.

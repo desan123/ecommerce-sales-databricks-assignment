@@ -1,20 +1,22 @@
-CREATE TABLE IF NOT EXISTS gold_lhdev.fact_orders_enriched (
+CREATE TABLE IF NOT EXISTS ecom_dev.gold_lhdev.fact_orders_enriched (
+  row_id INT,
   order_id STRING NOT NULL,
   order_date DATE,
   year INT,
+  month INT,
   customer_id STRING NOT NULL,
   customer_name STRING,
   country STRING,
+  region STRING,
+  segment STRING,
   product_id STRING NOT NULL,
   product_name STRING,
   category STRING,
   sub_category STRING,
   quantity INT,
-  unit_price DECIMAL(10,2),
-  unit_cost DECIMAL(10,2),
-  revenue DECIMAL(10,2),
-  cost DECIMAL(10,2),
+  price DECIMAL(10,2),
+  discount DECIMAL(5,2),
   profit DECIMAL(10,2)
 )
 USING DELTA
-COMMENT 'Gold layer - enriched orders fact with profit and dimensional attributes';
+COMMENT 'Gold layer - enriched orders fact (one row per order line, key = row_id)';

@@ -1,6 +1,9 @@
-CREATE TABLE IF NOT EXISTS bronze_lhdev.customers (
+CREATE TABLE IF NOT EXISTS ecom_dev.bronze_lhdev.customers (
   `Customer ID` STRING NOT NULL,
   `Customer Name` STRING,
+  `email` STRING,
+  `phone` STRING,
+  `address` STRING,
   `Segment` STRING,
   `Country` STRING,
   `City` STRING,
