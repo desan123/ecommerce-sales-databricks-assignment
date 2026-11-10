@@ -1,3 +1,11 @@
+# Databricks notebook source
+
+# MAGIC %md
+# MAGIC # Data Quality Functions
+# MAGIC
+# MAGIC This notebook contains data quality check functions for validation.
+
+# COMMAND ----------
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
@@ -99,6 +107,10 @@ def clean_customers(df: DataFrame) -> DataFrame:
         .withColumn("segment", F.initcap(F.trim(F.col("segment"))))
         .withColumn("postal_code", F.trim(F.col("postal_code")))
     )
+
+    # Clean phone numbers if column exists
+    if "Phone" in df.columns:
+        df = df.withColumn("phone", clean_phone_col("Phone"))
 
     # Filter out records with null customer_id
     df = df.filter(F.col("customer_id").isNotNull())
