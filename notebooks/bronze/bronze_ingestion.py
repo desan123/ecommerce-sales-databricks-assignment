@@ -1,20 +1,65 @@
+# Databricks notebook source
+
+# MAGIC %md
+# MAGIC # Bronze Layer Ingestion
+# MAGIC
+# MAGIC This notebook loads raw data from CSV/JSON/Excel files into Bronze Delta tables.
+# MAGIC
+# MAGIC **Source Files:**
+# MAGIC - Orders.json
+# MAGIC - Products.csv
+# MAGIC - Customer.csv (or Customer.xlsx)
+# MAGIC
+# MAGIC **Target Tables:**
+# MAGIC - bronze_lhdev.orders
+# MAGIC - bronze_lhdev.customers
+# MAGIC - bronze_lhdev.products
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Setup: Configure Paths
+
+# COMMAND ----------
+
+# Create widgets for configuration
+dbutils.widgets.text("raw_path", "dbfs:/FileStore/tables/", "Raw Data Path")
+dbutils.widgets.text("bronze_db", "bronze_lhdev", "Bronze Database")
+
+# Get widget values
+RAW_BASE = dbutils.widgets.get("raw_path")
+BRONZE_DB = dbutils.widgets.get("bronze_db")
+
+print(f"Raw Data Path: {RAW_BASE}")
+print(f"Bronze Database: {BRONZE_DB}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Import Schema Definitions
+
+# COMMAND ----------
+
+# MAGIC %run ../util_lib/schema_definitions
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Import Generic Functions
+
+# COMMAND ----------
+
+# MAGIC %run ../util_lib/generic_functions
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 1. Ingest Orders (JSON Format)
+
+# COMMAND ----------
+
 from pyspark.sql import functions as F
 from delta.tables import DeltaTable
-
-# COMMAND ----------
-
-# MAGIC %run /notebooks/util_lib/schema_definitions
-
-# COMMAND ----------
-
-# MAGIC %run /notebooks/util_lib/generic_functions
-
-# COMMAND ----------
-
-# MAGIC %md ## 1. Orders (from JSON)
-
-# COMMAND ----------
-RAW_BASE = "{{configs.config.file_path}}"
 
 # Read Orders from JSON file
 orders_raw = (
@@ -23,28 +68,23 @@ orders_raw = (
     .json(f"{RAW_BASE}/Orders.json", schema=BRONZE_ORDERS_SCHEMA)
 )
 
-upsert_logic_bronze(orders_raw, "{{configs.config.bronze_db}}.orders", ["Order ID"], BRONZE_ORDERS_SCHEMA)
+print(f"Orders read: {orders_raw.count()} records")
+display(orders_raw.limit(5))
 
 # COMMAND ----------
 
-# MAGIC %md ## 2. Customers (from Excel)
+# Upsert to Bronze table
+upsert_logic_bronze(orders_raw, f"{BRONZE_DB}.orders", ["Order ID"], BRONZE_ORDERS_SCHEMA)
+print("✓ Orders table created/updated successfully")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 2. Ingest Customers (Excel/CSV Format)
 # MAGIC
-# MAGIC **Note**: Databricks needs the spark-excel library to read Excel files directly.
-# MAGIC If not available, please convert Customer.xlsx to Customer.csv in Excel and upload it.
-# MAGIC
-# MAGIC **Option 1**: Using spark-excel (if installed)
-# MAGIC ```
-# MAGIC customers_raw = (
-# MAGIC     spark.read
-# MAGIC     .format("com.crealytics.spark.excel")
-# MAGIC     .option("header", "true")
-# MAGIC     .option("inferSchema", "false")
-# MAGIC     .schema(BRONZE_CUSTOMERS_SCHEMA)
-# MAGIC     .load(f"{RAW_BASE}/Customer.xlsx")
-# MAGIC )
-# MAGIC ```
-# MAGIC
-# MAGIC **Option 2**: Using CSV (recommended for Databricks Community Edition)
+# MAGIC **Note**: Databricks Community Edition may not have spark-excel library.
+# MAGIC - If you have Excel file: Convert to CSV first in Excel
+# MAGIC - Upload Customer.csv instead of Customer.xlsx
 
 # COMMAND ----------
 
@@ -62,7 +102,7 @@ try:
     print("✓ Successfully read Customer.xlsx using Excel reader")
 except:
     # Fallback to CSV
-    print("✗ Excel reader not available. Trying Customer.csv...")
+    print("Excel reader not available. Reading Customer.csv...")
     customers_raw = (
         spark.read
         .option("header", True)
@@ -72,19 +112,28 @@ except:
     )
     print("✓ Successfully read Customer.csv")
 
+print(f"Customers read: {customers_raw.count()} records")
+display(customers_raw.limit(5))
+
+# COMMAND ----------
+
+# Upsert to Bronze table
 upsert_logic_bronze(
     customers_raw,
-    "{{configs.config.bronze_db}}.customers",
+    f"{BRONZE_DB}.customers",
     ["Customer ID"],
     BRONZE_CUSTOMERS_SCHEMA,
 )
+print("✓ Customers table created/updated successfully")
 
 # COMMAND ----------
 
-# MAGIC %md ## 3. Products (from CSV)
+# MAGIC %md
+# MAGIC ## 3. Ingest Products (CSV Format)
 
 # COMMAND ----------
 
+# Read Products from CSV
 products_raw = (
     spark.read
     .option("header", True)
@@ -93,32 +142,75 @@ products_raw = (
     .csv(f"{RAW_BASE}/Products.csv")
 )
 
+print(f"Products read: {products_raw.count()} records")
+display(products_raw.limit(5))
+
+# COMMAND ----------
+
+# Upsert to Bronze table
 upsert_logic_bronze(
     products_raw,
-    "{{configs.config.bronze_db}}.products",
+    f"{BRONZE_DB}.products",
     ["Product ID"],
     BRONZE_PRODUCTS_SCHEMA,
 )
+print("✓ Products table created/updated successfully")
 
 # COMMAND ----------
 
-# MAGIC %md ## Verify Bronze Tables
+# MAGIC %md
+# MAGIC ## Verification: Bronze Layer Summary
 
 # COMMAND ----------
 
-print("=== Bronze Layer Summary ===")
-print(f"Orders: {spark.table('{{configs.config.bronze_db}}.orders').count()} records")
-print(f"Customers: {spark.table('{{configs.config.bronze_db}}.customers').count()} records")
-print(f"Products: {spark.table('{{configs.config.bronze_db}}.products').count()} records")
+print("=" * 60)
+print("BRONZE LAYER SUMMARY")
+print("=" * 60)
+
+orders_count = spark.table(f"{BRONZE_DB}.orders").count()
+customers_count = spark.table(f"{BRONZE_DB}.customers").count()
+products_count = spark.table(f"{BRONZE_DB}.products").count()
+
+print(f"✓ Orders:    {orders_count:,} records")
+print(f"✓ Customers: {customers_count:,} records")
+print(f"✓ Products:  {products_count:,} records")
+print("=" * 60)
 
 # COMMAND ----------
 
-# Show sample records
-print("\n=== Sample Orders ===")
-spark.table("{{configs.config.bronze_db}}.orders").show(5, truncate=False)
+# MAGIC %md
+# MAGIC ## Sample Data Preview
 
-print("\n=== Sample Customers ===")
-spark.table("{{configs.config.bronze_db}}.customers").show(5, truncate=False)
+# COMMAND ----------
 
-print("\n=== Sample Products ===")
-spark.table("{{configs.config.bronze_db}}.products").show(5, truncate=False)
+# MAGIC %md
+# MAGIC ### Sample Orders
+
+# COMMAND ----------
+
+display(spark.table(f"{BRONZE_DB}.orders").limit(10))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Sample Customers
+
+# COMMAND ----------
+
+display(spark.table(f"{BRONZE_DB}.customers").limit(10))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Sample Products
+
+# COMMAND ----------
+
+display(spark.table(f"{BRONZE_DB}.products").limit(10))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## ✅ Bronze Ingestion Complete!
+# MAGIC
+# MAGIC **Next Step:** Run the Silver Cleaning notebook to clean and validate data.

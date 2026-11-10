@@ -1,10 +1,21 @@
+# Databricks notebook source
+
+# MAGIC %md
+# MAGIC # Schema Definitions
+# MAGIC
+# MAGIC This notebook contains all schema definitions for Bronze, Silver, and Gold layers.
+
+# COMMAND ----------
+
 from pyspark.sql.types import *
 
-# ---------------------------------------------------------------------------
-# Bronze schemas (raw, all strings from source files)
-# ---------------------------------------------------------------------------
+# COMMAND ----------
 
-# Orders from JSON file
+# MAGIC %md
+# MAGIC ## Bronze Schemas (Raw Data - All Strings)
+
+# COMMAND ----------
+
 BRONZE_ORDERS_SCHEMA = StructType([
     StructField("Row ID",       StringType(), nullable=True),
     StructField("Order ID",     StringType(), nullable=False),
@@ -14,12 +25,13 @@ BRONZE_ORDERS_SCHEMA = StructType([
     StructField("Customer ID",  StringType(), nullable=False),
     StructField("Product ID",   StringType(), nullable=False),
     StructField("Quantity",     StringType(), nullable=True),
-    StructField("Price",        StringType(), nullable=True),  # Total price
+    StructField("Price",        StringType(), nullable=True),
     StructField("Discount",     StringType(), nullable=True),
-    StructField("Profit",       StringType(), nullable=True),  # Already calculated in source
+    StructField("Profit",       StringType(), nullable=True),
 ])
 
-# Customers from Excel (assuming standard e-commerce structure)
+# COMMAND ----------
+
 BRONZE_CUSTOMERS_SCHEMA = StructType([
     StructField("Customer ID",   StringType(), nullable=False),
     StructField("Customer Name", StringType(), nullable=True),
@@ -31,7 +43,8 @@ BRONZE_CUSTOMERS_SCHEMA = StructType([
     StructField("Region",        StringType(), nullable=True),
 ])
 
-# Products from CSV
+# COMMAND ----------
+
 BRONZE_PRODUCTS_SCHEMA = StructType([
     StructField("Product ID",         StringType(), nullable=False),
     StructField("Category",           StringType(), nullable=True),
@@ -41,9 +54,12 @@ BRONZE_PRODUCTS_SCHEMA = StructType([
     StructField("Price per product",  StringType(), nullable=True),
 ])
 
-# ---------------------------------------------------------------------------
-# Silver schemas (typed, cleaned)
-# ---------------------------------------------------------------------------
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Silver Schemas (Typed, Cleaned Data)
+
+# COMMAND ----------
 
 SILVER_ORDERS_SCHEMA = StructType([
     StructField("row_id",       IntegerType(), nullable=True),
@@ -54,10 +70,12 @@ SILVER_ORDERS_SCHEMA = StructType([
     StructField("customer_id",  StringType(), nullable=False),
     StructField("product_id",   StringType(), nullable=False),
     StructField("quantity",     IntegerType(), nullable=True),
-    StructField("price",        DecimalType(10, 2), nullable=True),  # Total price
+    StructField("price",        DecimalType(10, 2), nullable=True),
     StructField("discount",     DecimalType(5, 2), nullable=True),
     StructField("profit",       DecimalType(10, 2), nullable=True),
 ])
+
+# COMMAND ----------
 
 SILVER_CUSTOMERS_SCHEMA = StructType([
     StructField("customer_id",   StringType(), nullable=False),
@@ -70,6 +88,8 @@ SILVER_CUSTOMERS_SCHEMA = StructType([
     StructField("region",        StringType(), nullable=True),
 ])
 
+# COMMAND ----------
+
 SILVER_PRODUCTS_SCHEMA = StructType([
     StructField("product_id",     StringType(), nullable=False),
     StructField("category",       StringType(), nullable=True),
@@ -79,11 +99,13 @@ SILVER_PRODUCTS_SCHEMA = StructType([
     StructField("unit_price",     DecimalType(10, 2), nullable=True),
 ])
 
-# ---------------------------------------------------------------------------
-# Gold schemas
-# ---------------------------------------------------------------------------
+# COMMAND ----------
 
-# Enriched customer dimension
+# MAGIC %md
+# MAGIC ## Gold Schemas (Analytics-Ready)
+
+# COMMAND ----------
+
 GOLD_DIM_CUSTOMER_ENRICHED_SCHEMA = StructType([
     StructField("customer_id",    StringType(), nullable=False),
     StructField("customer_name",  StringType(), nullable=True),
@@ -97,7 +119,8 @@ GOLD_DIM_CUSTOMER_ENRICHED_SCHEMA = StructType([
     StructField("total_profit",   DecimalType(10, 2), nullable=True),
 ])
 
-# Enriched product dimension
+# COMMAND ----------
+
 GOLD_DIM_PRODUCT_ENRICHED_SCHEMA = StructType([
     StructField("product_id",          StringType(), nullable=False),
     StructField("product_name",        StringType(), nullable=True),
@@ -108,7 +131,8 @@ GOLD_DIM_PRODUCT_ENRICHED_SCHEMA = StructType([
     StructField("total_profit",        DecimalType(10, 2), nullable=True),
 ])
 
-# Enriched fact table with order info, profit (already rounded), customer and product details
+# COMMAND ----------
+
 GOLD_FACT_ORDERS_ENRICHED_SCHEMA = StructType([
     StructField("order_id",       StringType(), nullable=False),
     StructField("order_date",     DateType(),   nullable=True),
@@ -126,10 +150,11 @@ GOLD_FACT_ORDERS_ENRICHED_SCHEMA = StructType([
     StructField("quantity",       IntegerType(), nullable=True),
     StructField("price",          DecimalType(10, 2), nullable=True),
     StructField("discount",       DecimalType(5, 2), nullable=True),
-    StructField("profit",         DecimalType(10, 2), nullable=True),  # Rounded to 2 decimals
+    StructField("profit",         DecimalType(10, 2), nullable=True),
 ])
 
-# Aggregate table: profit by Year, Product Category, Sub Category, Customer
+# COMMAND ----------
+
 GOLD_AGG_PROFIT_SCHEMA = StructType([
     StructField("year",           IntegerType(), nullable=True),
     StructField("category",       StringType(), nullable=True),

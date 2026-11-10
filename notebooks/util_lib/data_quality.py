@@ -1,14 +1,24 @@
+# Databricks notebook source
+
+# MAGIC %md
+# MAGIC # Data Quality Functions
+# MAGIC
+# MAGIC This notebook contains data quality check functions for validation.
+
+# COMMAND ----------
+
 from dataclasses import dataclass, field
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 from pyspark.sql import functions as F
-from pyspark.sql.window import Window
 from pyspark.sql import DataFrame, SparkSession
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Result container
-# ---------------------------------------------------------------------------
+# MAGIC %md
+# MAGIC ## DQ Result Container
+
+# COMMAND ----------
 
 @dataclass
 class DQResult:
@@ -18,10 +28,16 @@ class DQResult:
     failed_count: int = 0
     sample_failures: Optional[List[dict]] = field(default_factory=list)
 
+    @property
+    def details(self) -> str:
+        return self.message
 
-# ---------------------------------------------------------------------------
-# Individual checks
-# ---------------------------------------------------------------------------
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Individual Check Functions
+
+# COMMAND ----------
 
 def check_uniqueness(df: DataFrame, pk_cols: List[str], table_name: str) -> DQResult:
     """Asserts that the combination of pk_cols is unique across all rows."""
@@ -36,6 +52,7 @@ def check_uniqueness(df: DataFrame, pk_cols: List[str], table_name: str) -> DQRe
         failed_count=duplicates,
     )
 
+# COMMAND ----------
 
 def check_not_null(df: DataFrame, cols: List[str], table_name: str) -> DQResult:
     """Asserts that specified columns contain no nulls."""
@@ -52,6 +69,7 @@ def check_not_null(df: DataFrame, cols: List[str], table_name: str) -> DQResult:
         failed_count=sum(failures.values()),
     )
 
+# COMMAND ----------
 
 def check_volume(
     df: DataFrame,
@@ -69,6 +87,7 @@ def check_volume(
         failed_count=0 if passed else 1,
     )
 
+# COMMAND ----------
 
 def check_referential_integrity(
     child_df: DataFrame,
@@ -89,76 +108,27 @@ def check_referential_integrity(
     count = orphans.count()
     passed = count == 0
     return DQResult(
-        check_name=f"ref_integrity:{child_table}.{fk_col} is {parent_table}.{pk_col}",
+        check_name=f"ref_integrity:{child_table}.{fk_col} -> {parent_table}.{pk_col}",
         passed=passed,
         message=f"{count} orphan FK rows" if not passed else "OK",
         failed_count=count,
     )
 
+# COMMAND ----------
 
-# ---------------------------------------------------------------------------
-# Anomaly detection: Hired-before-Applied
-# ---------------------------------------------------------------------------
+# MAGIC %md
+# MAGIC ## DQ Suite Runner
 
-def detect_hired_before_applied(workflow_df: DataFrame) -> DataFrame:
-
-    applied_ts = (
-        workflow_df
-        .filter(F.upper(F.col("new_status")) == "APPLIED")
-        .groupBy("application_id")
-        .agg(F.min("event_timestamp").alias("applied_ts"))
-    )
-
-    hired_ts = (
-        workflow_df
-        .filter(F.upper(F.col("new_status")) == "HIRED")
-        .groupBy("application_id")
-        .agg(F.min("event_timestamp").alias("hired_ts"))
-    )
-
-    # Join both back to the full event stream
-    joined_data = (
-        workflow_df
-        .join(applied_ts, on="application_id", how="left")
-        .join(hired_ts,   on="application_id", how="left")
-    )
-
-    joined_data = joined_data.withColumn(
-        "anomaly_flag",
-        F.when(
-            F.col("hired_ts").isNotNull() &
-            F.col("applied_ts").isNotNull() &
-            (F.col("hired_ts") < F.col("applied_ts")),
-            F.lit(True)
-        ).otherwise(F.lit(False))
-    ).withColumn(
-        "anomaly_reason",
-        F.when(
-            F.col("anomaly_flag") == True,
-            F.concat_ws(" ",
-                F.lit("Hired timestamp"),
-                F.col("hired_ts").cast("string"),
-                F.lit("precedes Applied timestamp"),
-                F.col("applied_ts").cast("string"),
-            )
-        ).otherwise(F.lit(None).cast("string"))
-    ).drop("applied_ts", "hired_ts")
-
-    return joined_data
-
-
-# ---------------------------------------------------------------------------
-# Run all checks and return a summary DataFrame
-# ---------------------------------------------------------------------------
+# COMMAND ----------
 
 def run_dq_suite(
     spark: SparkSession,
     results: List[DQResult],
-    suite_name: str = "ats_dq",
+    suite_name: str = "ecommerce_dq",
 ) -> DataFrame:
     """
     Converts a list of DQResult objects into a Spark DataFrame for logging.
-    In production this would be written to a Delta audit table.
+    This DataFrame is written to a Delta audit table.
     """
     rows = [
         (
@@ -177,10 +147,10 @@ def run_dq_suite(
                "message STRING, failed_count INT, run_timestamp STRING"
     )
 
-# ---------------------------------------------------------------------------
-# Print the Result
-# ---------------------------------------------------------------------------
+# COMMAND ----------
 
 def print_dq_summary(results: List[DQResult]):
-       for r in results:
-           print(f"[{'PASS' if r.passed else 'FAIL'}] {r.check_name}: {r.message}")
+    """Pretty print DQ results"""
+    for r in results:
+        status = "✓ PASS" if r.passed else "✗ FAIL"
+        print(f"{status} | {r.check_name}: {r.message}")

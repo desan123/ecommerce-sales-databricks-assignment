@@ -1,10 +1,24 @@
+# Databricks notebook source
+
+# MAGIC %md
+# MAGIC # SQL Profit Analysis Queries
+# MAGIC
+# MAGIC This notebook contains SQL queries for profit analysis as per assignment requirements.
+
 # COMMAND ----------
 
-# MAGIC %md # Profit Analysis SQL Queries
+# MAGIC %md
+# MAGIC ## Setup
 
 # COMMAND ----------
 
-# MAGIC %md ## Query 1: Profit by Year
+dbutils.widgets.text("gold_db", "gold_lhdev", "Gold Database")
+GOLD_DB = dbutils.widgets.get("gold_db")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Query 1: Profit by Year
 
 # COMMAND ----------
 
@@ -13,34 +27,32 @@
 # MAGIC     year,
 # MAGIC     ROUND(SUM(total_profit), 2) AS total_profit,
 # MAGIC     ROUND(SUM(total_revenue), 2) AS total_revenue,
-# MAGIC     ROUND(SUM(total_cost), 2) AS total_cost,
 # MAGIC     SUM(order_count) AS order_count
-# MAGIC FROM {{configs.config.gold_db}}.agg_profit
+# MAGIC FROM gold_lhdev.agg_profit
 # MAGIC WHERE year IS NOT NULL
 # MAGIC GROUP BY year
 # MAGIC ORDER BY year DESC
 
 # COMMAND ----------
 
-# Store result as DataFrame for further analysis
-profit_by_year = spark.sql("""
+profit_by_year = spark.sql(f"""
 SELECT
     year,
     ROUND(SUM(total_profit), 2) AS total_profit,
     ROUND(SUM(total_revenue), 2) AS total_revenue,
-    ROUND(SUM(total_cost), 2) AS total_cost,
     SUM(order_count) AS order_count
-FROM {{configs.config.gold_db}}.agg_profit
+FROM {GOLD_DB}.agg_profit
 WHERE year IS NOT NULL
 GROUP BY year
 ORDER BY year DESC
 """)
 
-profit_by_year.write.format("delta").mode("overwrite").saveAsTable("{{configs.config.gold_db}}.profit_by_year")
+profit_by_year.write.format("delta").mode("overwrite").saveAsTable(f"{GOLD_DB}.profit_by_year")
 
 # COMMAND ----------
 
-# MAGIC %md ## Query 2: Profit by Year + Product Category
+# MAGIC %md
+# MAGIC ## Query 2: Profit by Year + Product Category
 
 # COMMAND ----------
 
@@ -50,35 +62,33 @@ profit_by_year.write.format("delta").mode("overwrite").saveAsTable("{{configs.co
 # MAGIC     category,
 # MAGIC     ROUND(SUM(total_profit), 2) AS total_profit,
 # MAGIC     ROUND(SUM(total_revenue), 2) AS total_revenue,
-# MAGIC     ROUND(SUM(total_cost), 2) AS total_cost,
 # MAGIC     SUM(order_count) AS order_count
-# MAGIC FROM {{configs.config.gold_db}}.agg_profit
+# MAGIC FROM gold_lhdev.agg_profit
 # MAGIC WHERE year IS NOT NULL AND category IS NOT NULL
 # MAGIC GROUP BY year, category
 # MAGIC ORDER BY year DESC, total_profit DESC
 
 # COMMAND ----------
 
-# Store result as DataFrame
-profit_by_year_category = spark.sql("""
+profit_by_year_category = spark.sql(f"""
 SELECT
     year,
     category,
     ROUND(SUM(total_profit), 2) AS total_profit,
     ROUND(SUM(total_revenue), 2) AS total_revenue,
-    ROUND(SUM(total_cost), 2) AS total_cost,
     SUM(order_count) AS order_count
-FROM {{configs.config.gold_db}}.agg_profit
+FROM {GOLD_DB}.agg_profit
 WHERE year IS NOT NULL AND category IS NOT NULL
 GROUP BY year, category
 ORDER BY year DESC, total_profit DESC
 """)
 
-profit_by_year_category.write.format("delta").mode("overwrite").saveAsTable("{{configs.config.gold_db}}.profit_by_year_category")
+profit_by_year_category.write.format("delta").mode("overwrite").saveAsTable(f"{GOLD_DB}.profit_by_year_category")
 
 # COMMAND ----------
 
-# MAGIC %md ## Query 3: Profit by Customer
+# MAGIC %md
+# MAGIC ## Query 3: Profit by Customer
 
 # COMMAND ----------
 
@@ -88,9 +98,8 @@ profit_by_year_category.write.format("delta").mode("overwrite").saveAsTable("{{c
 # MAGIC     customer_name,
 # MAGIC     ROUND(SUM(total_profit), 2) AS total_profit,
 # MAGIC     ROUND(SUM(total_revenue), 2) AS total_revenue,
-# MAGIC     ROUND(SUM(total_cost), 2) AS total_cost,
 # MAGIC     SUM(order_count) AS order_count
-# MAGIC FROM {{configs.config.gold_db}}.agg_profit
+# MAGIC FROM gold_lhdev.agg_profit
 # MAGIC WHERE customer_id IS NOT NULL
 # MAGIC GROUP BY customer_id, customer_name
 # MAGIC ORDER BY total_profit DESC
@@ -98,26 +107,25 @@ profit_by_year_category.write.format("delta").mode("overwrite").saveAsTable("{{c
 
 # COMMAND ----------
 
-# Store result as DataFrame
-profit_by_customer = spark.sql("""
+profit_by_customer = spark.sql(f"""
 SELECT
     customer_id,
     customer_name,
     ROUND(SUM(total_profit), 2) AS total_profit,
     ROUND(SUM(total_revenue), 2) AS total_revenue,
-    ROUND(SUM(total_cost), 2) AS total_cost,
     SUM(order_count) AS order_count
-FROM {{configs.config.gold_db}}.agg_profit
+FROM {GOLD_DB}.agg_profit
 WHERE customer_id IS NOT NULL
 GROUP BY customer_id, customer_name
 ORDER BY total_profit DESC
 """)
 
-profit_by_customer.write.format("delta").mode("overwrite").saveAsTable("{{configs.config.gold_db}}.profit_by_customer")
+profit_by_customer.write.format("delta").mode("overwrite").saveAsTable(f"{GOLD_DB}.profit_by_customer")
 
 # COMMAND ----------
 
-# MAGIC %md ## Query 4: Profit by Customer + Year
+# MAGIC %md
+# MAGIC ## Query 4: Profit by Customer + Year
 
 # COMMAND ----------
 
@@ -128,9 +136,8 @@ profit_by_customer.write.format("delta").mode("overwrite").saveAsTable("{{config
 # MAGIC     year,
 # MAGIC     ROUND(SUM(total_profit), 2) AS total_profit,
 # MAGIC     ROUND(SUM(total_revenue), 2) AS total_revenue,
-# MAGIC     ROUND(SUM(total_cost), 2) AS total_cost,
 # MAGIC     SUM(order_count) AS order_count
-# MAGIC FROM {{configs.config.gold_db}}.agg_profit
+# MAGIC FROM gold_lhdev.agg_profit
 # MAGIC WHERE customer_id IS NOT NULL AND year IS NOT NULL
 # MAGIC GROUP BY customer_id, customer_name, year
 # MAGIC ORDER BY total_profit DESC, year DESC
@@ -138,39 +145,23 @@ profit_by_customer.write.format("delta").mode("overwrite").saveAsTable("{{config
 
 # COMMAND ----------
 
-# Store result as DataFrame
-profit_by_customer_year = spark.sql("""
+profit_by_customer_year = spark.sql(f"""
 SELECT
     customer_id,
     customer_name,
     year,
     ROUND(SUM(total_profit), 2) AS total_profit,
     ROUND(SUM(total_revenue), 2) AS total_revenue,
-    ROUND(SUM(total_cost), 2) AS total_cost,
     SUM(order_count) AS order_count
-FROM {{configs.config.gold_db}}.agg_profit
+FROM {GOLD_DB}.agg_profit
 WHERE customer_id IS NOT NULL AND year IS NOT NULL
 GROUP BY customer_id, customer_name, year
 ORDER BY total_profit DESC, year DESC
 """)
 
-profit_by_customer_year.write.format("delta").mode("overwrite").saveAsTable("{{configs.config.gold_db}}.profit_by_customer_year")
+profit_by_customer_year.write.format("delta").mode("overwrite").saveAsTable(f"{GOLD_DB}.profit_by_customer_year")
 
 # COMMAND ----------
 
-# MAGIC %md ## Additional Analysis: Top Profitable Product Categories
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT
-# MAGIC     category,
-# MAGIC     sub_category,
-# MAGIC     ROUND(SUM(total_profit), 2) AS total_profit,
-# MAGIC     ROUND(SUM(total_revenue), 2) AS total_revenue,
-# MAGIC     SUM(order_count) AS order_count
-# MAGIC FROM {{configs.config.gold_db}}.agg_profit
-# MAGIC WHERE category IS NOT NULL
-# MAGIC GROUP BY category, sub_category
-# MAGIC ORDER BY total_profit DESC
-# MAGIC LIMIT 20
+# MAGIC %md
+# MAGIC ## ✅ All SQL Queries Complete!
