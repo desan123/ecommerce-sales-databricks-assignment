@@ -1,9 +1,12 @@
 CREATE TABLE IF NOT EXISTS bronze_lhdev.customers (
-  customer_id STRING NOT NULL,
-  customer_name STRING,
-  country STRING,
-  city STRING,
-  email STRING
+  `Customer ID` STRING NOT NULL,
+  `Customer Name` STRING,
+  `Segment` STRING,
+  `Country` STRING,
+  `City` STRING,
+  `State` STRING,
+  `Postal Code` STRING,
+  `Region` STRING
 )
 USING DELTA
-COMMENT 'Bronze layer - raw customers data from source systems';
+COMMENT 'Bronze layer - raw customers data from source (keeps original column names with spaces)';

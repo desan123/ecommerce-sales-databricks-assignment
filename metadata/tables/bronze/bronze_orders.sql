@@ -1,11 +1,15 @@
 CREATE TABLE IF NOT EXISTS bronze_lhdev.orders (
-  order_id STRING NOT NULL,
-  customer_id STRING NOT NULL,
-  product_id STRING NOT NULL,
-  order_date STRING,
-  quantity STRING,
-  unit_price STRING,
-  unit_cost STRING
+  `Row ID` STRING,
+  `Order ID` STRING NOT NULL,
+  `Order Date` STRING,
+  `Ship Date` STRING,
+  `Ship Mode` STRING,
+  `Customer ID` STRING NOT NULL,
+  `Product ID` STRING NOT NULL,
+  `Quantity` STRING,
+  `Price` STRING,
+  `Discount` STRING,
+  `Profit` STRING
 )
 USING DELTA
-COMMENT 'Bronze layer - raw orders data from source systems';
+COMMENT 'Bronze layer - raw orders data from source (keeps original column names with spaces)';
